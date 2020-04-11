@@ -2,6 +2,7 @@ import express from 'express';
 import storage from './memory_storage.js';
 import cors from 'cors';
 import connect from './db.js';
+import mongo from 'mongodb';
 
 const app = express(); // instanciranje aplikacije
 const port = 3000; // port na kojem će web server slušati
@@ -9,7 +10,7 @@ const port = 3000; // port na kojem će web server slušati
 app.use(cors());
 app.use(express.json()); // automatski dekodiraj JSON poruke
 
-app.post('/posts', (req, res) => {
+app.post('/posts_memory', (req, res) => {
     let data = req.body;
 
     // ovo inače radi baza (autoincrement ili sl.), ali čisto za primjer
@@ -20,6 +21,31 @@ app.post('/posts', (req, res) => {
 
     // vrati ono što je spremljeno
     res.json(data); // vrati podatke za referencu
+});
+
+app.post('/posts', async (req, res) => {
+    let db = await connect();
+    let doc = req.body;
+
+    let result = await db.collection('posts').insertOne(doc);
+    if (result.insertedCount == 1) {
+        res.json({
+            status: 'success',
+            id: result.insertedId,
+        });
+    } else {
+        res.json({
+            status: 'fail',
+        });
+    }
+});
+
+app.get('/posts/:id', async (req, res) => {
+    let id = req.params.id;
+    let db = await connect();
+    let document = await db.collection('posts').findOne({ _id: mongo.ObjectId(id) });
+
+    res.json(document);
 });
 
 app.get('/posts', async (req, res) => {
@@ -52,38 +78,10 @@ app.get('/posts', async (req, res) => {
         });
     }
 
-    console.log('Selekcija', selekcija);
-
     let cursor = await db.collection('posts').find(selekcija);
     let results = await cursor.toArray();
 
     res.json(results);
-});
-
-app.get('/posts_memory', (req, res) => {
-    let posts = storage.posts;
-    let query = req.query;
-
-    if (query.title) {
-        posts = posts.filter((e) => e.title.indexOf(query.title) >= 0);
-    }
-
-    if (query.createdBy) {
-        posts = posts.filter((e) => e.createdBy.indexOf(query.createdBy) >= 0);
-    }
-
-    if (query._any) {
-        let terms = query._any.split(' ');
-        posts = posts.filter((doc) => {
-            let info = doc.title + ' ' + doc.createdBy;
-            return terms.every((term) => info.indexOf(term) >= 0);
-        });
-    }
-
-    // sortiranje
-    posts.sort((a, b) => b.postedAt - a.postedAt);
-
-    res.json(posts);
 });
 
 app.listen(port, () => console.log(`Slušam na portu ${port}!`));
