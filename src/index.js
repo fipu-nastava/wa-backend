@@ -1,14 +1,69 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import storage from './memory_storage.js';
 import cors from 'cors';
 import connect from './db.js';
 import mongo from 'mongodb';
+import auth from './auth';
 
 const app = express(); // instanciranje aplikacije
 const port = 3000; // port na kojem će web server slušati
 
 app.use(cors());
 app.use(express.json()); // automatski dekodiraj JSON poruke
+
+app.get('/tajna', [auth.verify], async (req, res) => {
+    // nakon što se izvrši auth.verify middleware, imamo dostupan req.jwt objekt
+    res.status(200).send('tajna korisnika ' + req.jwt.username);
+});
+
+app.post('/auth', async (req, res) => {
+    let user = req.body;
+    let username = user.username;
+    let password = user.password;
+
+    try {
+        let result = await auth.authenticateUser(username, password);
+        res.status(201).json(result);
+    } catch (e) {
+        res.status(500).json({
+            error: e.message,
+        });
+    }
+});
+
+app.post('/user', async (req, res) => {
+    let user = req.body;
+
+    try {
+        let result = await auth.registerUser(user);
+        res.status(201).send();
+    } catch (e) {
+        res.status(500).json({
+            error: e.message,
+        });
+    }
+});
+
+let primjer_middleware = (res, req, next) => {
+    console.log('Ja se izvršavam prije ostatka handlera za rutu');
+    res.varijabla_1 = 'OK';
+    next();
+};
+let primjer_middleware_2 = (res, req, next) => {
+    console.log('I ja se isto izvršavam prije ostatka handlera za rutu');
+    res.varijabla_2 = 'isto OK';
+    next();
+};
+app.get('/primjer', [primjer_middleware, primjer_middleware_2], (req, res) => {
+    console.log('.. a tek onda se ja izvršavam.');
+    console.log(req.varijabla_1);
+    console.log(req.varijabla_2);
+
+    res.send('OK');
+});
 
 app.patch('/posts/:id', async (req, res) => {
     let doc = req.body;
@@ -28,8 +83,7 @@ app.patch('/posts/:id', async (req, res) => {
             id: result.insertedId,
         });
     } else {
-        res.statusCode = 500;
-        res.json({
+        res.status(500).json({
             status: 'fail',
         });
     }
@@ -48,8 +102,7 @@ app.put('/posts/:id', async (req, res) => {
             id: result.insertedId,
         });
     } else {
-        res.statusCode = 500;
-        res.json({
+        res.status(500).json({
             status: 'fail',
         });
     }
@@ -87,11 +140,9 @@ app.delete('/posts/:postId/comments/:commentId', async (req, res) => {
         }
     );
     if (result.modifiedCount == 1) {
-        res.statusCode = 201;
-        res.send();
+        res.status(201).send();
     } else {
-        res.statusCode = 500;
-        res.json({
+        res.status(500).json({
             status: 'fail',
         });
     }
@@ -123,14 +174,13 @@ app.post('/posts/:postId/comments', async (req, res) => {
             id: doc._id,
         });
     } else {
-        res.statusCode = 500;
-        res.json({
+        res.status(500).json({
             status: 'fail',
         });
     }
 });
 
-app.get('/posts/:id', async (req, res) => {
+app.get('/posts/:id', [auth.verify], async (req, res) => {
     let id = req.params.id;
     let db = await connect();
     let document = await db.collection('posts').findOne({ _id: mongo.ObjectId(id) });
@@ -138,7 +188,7 @@ app.get('/posts/:id', async (req, res) => {
     res.json(document);
 });
 
-app.get('/posts', async (req, res) => {
+app.get('/posts', [auth.verify], async (req, res) => {
     let db = await connect();
     let query = req.query;
 
