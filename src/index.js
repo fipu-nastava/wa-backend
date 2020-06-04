@@ -19,6 +19,20 @@ app.get('/tajna', [auth.verify], async (req, res) => {
     res.status(200).send('tajna korisnika ' + req.jwt.username);
 });
 
+app.patch('/user', [auth.verify], async (req, res) => {
+    let changes = req.body;
+    if (changes.new_password && changes.old_password) {
+        let result = await auth.changeUserPassword(req.jwt.username, changes.old_password, changes.new_password);
+        if (result) {
+            res.status(201).send();
+        } else {
+            res.status(500).json({ error: 'cannot change password' });
+        }
+    } else {
+        res.status(400).json({ error: 'unrecognized request' });
+    }
+});
+
 app.post('/auth', async (req, res) => {
     let user = req.body;
     let username = user.username;
